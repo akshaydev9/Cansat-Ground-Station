@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NMIT-SAT M-III Ground Station</title>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+    <style>
+        :root {
+            color-scheme: dark;
+            --bg-dark: #080d18;
+            --panel-dark: #101a2b;
+            --border-dark: #23334b;
+            --header-dark: #0b1423;
+            --cyan: #65d8ff;
+            --orange: #ffb86b;
+            --success: #38d99f;
+            --danger: #ff6b78;
+            --grey: #91a3bc;
+            --text: #e7eef9;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            min-width: 320px;
+            font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: radial-gradient(ellipse at 50% -20%, #172944 0, var(--bg-dark) 55%);
+            color: var(--text);
+            overflow-x: hidden;
+            padding-bottom: 120px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            padding: 14px clamp(16px, 3vw, 40px);
+            background: rgba(11, 20, 35, 0.92);
+            border-bottom: 1px solid var(--border-dark);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            backdrop-filter: blur(16px);
+        }
+
+        .brand {
+            color: var(--cyan);
+            font-size: 0.85rem;
+            font-weight: 800;
+            letter-spacing: 1.3px;
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .demo-badge {
+            color: var(--orange);
+            border: 1px solid #6b4a2d;
+            background: #2b211b;
+            padding: 7px 10px;
+            border-radius: 999px;
+            font-size: 0.68rem;
+            font-weight: 800;
+            letter-spacing: 1px;
+        }
+
+        .demo-badge.online {
+            color: var(--success);
+            border-color: #276650;
+            background: #102a24;
+        }
+
+        .serial-port {
+            width: 145px;
+            min-width: 0;
+            padding: 10px 11px;
+            color: var(--text);
+            background: #0b1423;
+            border: 1px solid var(--border-dark);
+            border-radius: 9px;
+            font: 0.8rem ui-monospace, SFMono-Regular, Consolas, monospace;
+        }
+
+        #mission-timer {
+            font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+            color: var(--orange);
+            font-weight: 700;
+            font-size: 0.9rem;
+            border: 1px solid var(--border-dark);
+            background: #0b1423;
+            padding: 9px 12px;
+            border-radius: 9px;
+            white-space: nowrap;
+        }
+
+        .btn-status {
+            color: #07131d;
+            border: none;
+            padding: 10px 16px;
+            font-weight: 800;
+            border-radius: 9px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            min-width: 125px;
+            text-transform: uppercase;
+            transition: transform 160ms ease, filter 160ms ease;
+        }
+
+        .btn-status:hover {
+            transform: translateY(-1px);
+            filter: brightness(1.08);
+        }
+
+        .btn-status:focus-visible {
+            outline: 2px solid white;
+            outline-offset: 3px;
+        }
+
+        .btn-connect { background: var(--success); }
+        .btn-disconnect { background: var(--danger); }
+
+        .mission-main-title {
+            text-align: center;
+            font-size: clamp(1.25rem, 2.2vw, 1.8rem);
+            letter-spacing: 0.14em;
+            color: #fff;
+            margin: 28px 16px 22px;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+
+        .mission-subtitle {
+            margin: -12px 16px 24px;
+            text-align: center;
+            color: var(--grey);
+            font-size: 0.85rem;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: minmax(280px, 0.88fr) minmax(320px, 1.15fr) minmax(300px, 1fr);
+            gap: 16px;
+            padding: 0 clamp(16px, 3vw, 40px);
+            height: 540px;
+            max-width: 1900px;
+            margin: 0 auto;
+        }
+
+        .panel {
+            background: linear-gradient(155deg, #142137, var(--panel-dark) 70%);
+            border: 1px solid var(--border-dark);
+            border-radius: 14px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            min-width: 0;
+            box-shadow: 0 14px 35px rgba(0, 0, 0, 0.18);
+        }
+
+        .panel-header {
+            background: rgba(255, 255, 255, 0.025);
+            padding: 13px 15px;
+            font-size: 0.72rem;
+            font-weight: 800;
+            color: var(--grey);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            border-bottom: 1px solid var(--border-dark);
+        }
+
+        #cansat-3d-canvas {
+            width: 100%;
+            height: 320px;
+            background: radial-gradient(circle, #1b2b43, #0d1626 72%);
+        }
+
+        .imu-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 5px;
+            padding: 12px 10px;
+            background: rgba(0, 0, 0, 0.14);
+        }
+
+        .imu-card {
+            text-align: center;
+            border-right: 1px solid var(--border-dark);
+        }
+
+        .imu-card:last-child { border: none; }
+
+        .imu-label {
+            font-size: 0.62rem;
+            color: var(--grey);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .imu-val {
+            font-size: 0.95rem;
+            font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+            color: var(--cyan);
+            margin-top: 4px;
+        }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 9px;
+            padding: 12px;
+        }
+
+        .stat-card {
+            background: rgba(7, 13, 24, 0.72);
+            border: 1px solid var(--border-dark);
+            padding: 12px;
+            border-radius: 10px;
+            text-align: center;
+            min-width: 0;
+        }
+
+        .stat-label {
+            font-size: 0.62rem;
+            color: var(--grey);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-bottom: 6px;
+        }
+
+        .stat-value {
+            font-size: 1rem;
+            font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+            color: var(--cyan);
+            font-weight: 700;
+            overflow-wrap: anywhere;
+        }
+
+        .map-wrap {
+            position: relative;
+            flex: 1;
+            min-height: 0;
+            background: #0b1423;
+        }
+
+        #map {
+            position: absolute;
+            inset: 0;
+        }
+
+        .drop-pin-icon {
+            background: transparent;
+            border: 0;
+        }
+
+        .drop-pin {
+            position: relative;
+            width: 24px;
+            height: 24px;
+            border: 3px solid #fff;
+            border-radius: 50% 50% 50% 0;
+            background: #ff5964;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.65);
+            transform: rotate(-45deg);
+        }
+
+        .drop-pin::after {
+            content: "";
+            position: absolute;
+            width: 6px;
+            height: 6px;
+            left: 6px;
+            top: 6px;
+            border-radius: 50%;
+            background: #fff;
+        }
+
+        .drop-pin-label {
+            position: absolute;
+            top: -34px;
+            left: 14px;
+            padding: 5px 8px;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            border-radius: 6px;
+            background: #b83342;
+            color: #fff;
+            font-size: 10px;
+            font-weight: 900;
+            letter-spacing: 0.07em;
+            white-space: nowrap;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+            transform: rotate(45deg);
+        }
+
+        .map-status {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            z-index: 500;
+            padding: 8px 10px;
+            border: 1px solid rgba(35, 51, 75, 0.9);
+            border-radius: 9px;
+            background: rgba(8, 13, 24, 0.9);
+            color: var(--text);
+            font-size: 0.68rem;
+            font-weight: 800;
+            letter-spacing: 0.06em;
+            pointer-events: none;
+            box-shadow: 0 5px 18px rgba(0, 0, 0, 0.25);
+        }
+
+        .map-status::before {
+            content: "";
+            display: inline-block;
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            margin-right: 7px;
+            background: var(--orange);
+        }
+
+        .map-status.has-fix::before {
+            background: var(--success);
+            box-shadow: 0 0 10px var(--success);
+        }
+
+        .drop-point-controls {
+            position: absolute;
+            bottom: 12px;
+            left: 12px;
+            z-index: 500;
+            display: flex;
+            gap: 6px;
+            padding: 7px;
+            border: 1px solid rgba(35, 51, 75, 0.9);
+            border-radius: 9px;
+            background: rgba(8, 13, 24, 0.92);
+        }
+
+        .drop-point-controls input {
+            width: 94px;
+            min-width: 0;
+            padding: 7px;
+            border: 1px solid var(--border-dark);
+            border-radius: 6px;
+            background: #101a2b;
+            color: var(--text);
+            font: 0.68rem ui-monospace, SFMono-Regular, Consolas, monospace;
+        }
+
+        .drop-point-controls button {
+            padding: 7px 9px;
+            border: 0;
+            border-radius: 6px;
+            background: var(--orange);
+            color: #20150a;
+            font-size: 0.65rem;
+            font-weight: 900;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .leaflet-container {
+            background: #0b1423;
+            font: inherit;
+        }
+
+        .leaflet-control-attribution {
+            font-size: 9px !important;
+        }
+
+        .terminal {
+            flex: 1;
+            background: #080e18;
+            padding: 14px;
+            font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+            font-size: 0.73rem;
+            color: #73e5b7;
+            overflow-y: auto;
+            word-wrap: break-word;
+            word-break: break-all;
+            white-space: pre-wrap;
+            line-height: 1.55;
+        }
+
+        .scroll-content {
+            max-width: 1900px;
+            margin: 0 auto;
+            padding: 28px clamp(16px, 3vw, 40px);
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .section-title {
+            margin: 8px 0 0;
+            color: var(--text);
+            font-size: 0.95rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .section-note {
+            margin: -8px 0 2px;
+            color: var(--grey);
+            font-size: 0.78rem;
+        }
+
+        .tele-grid {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 15px;
+        }
+
+        .chart-box {
+            background: linear-gradient(155deg, #142137, var(--panel-dark) 70%);
+            border: 1px solid var(--border-dark);
+            padding: 14px;
+            border-radius: 13px;
+            height: 270px;
+            box-shadow: 0 14px 35px rgba(0, 0, 0, 0.14);
+        }
+
+        .fixed-footer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            min-height: 96px;
+            background: rgba(16, 26, 43, 0.96);
+            border-top: 1px solid var(--border-dark);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: clamp(32px, 10vw, 160px);
+            z-index: 2000;
+            box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(16px);
+        }
+
+        .status-component {
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 150px;
+        }
+
+        .comp-icon {
+            width: 32px;
+            height: 32px;
+            fill: #526179;
+            transition: 0.3s;
+            margin-bottom: 4px;
+        }
+
+        .para-active {
+            fill: var(--cyan);
+            filter: drop-shadow(0 0 8px var(--cyan));
+        }
+
+        .comp-label {
+            font-size: 0.62rem;
+            color: var(--grey);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 5px;
+        }
+
+        .comp-value {
+            font-size: 1.15rem;
+            font-weight: 900;
+            color: var(--orange);
+            text-transform: uppercase;
+        }
+
+        @media (max-width: 1100px) {
+            .dashboard-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                height: auto;
+            }
+
+            .dashboard-grid > .panel { min-height: 430px; }
+            .dashboard-grid > .panel:first-child { min-height: 540px; }
+
+            .tele-grid {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 700px) {
+            body { padding-bottom: 0; }
+
+            header {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+
+            .header-controls {
+                width: 100%;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+
+            .serial-port { flex: 1; }
+            #mission-timer {
+                flex: 1;
+                text-align: center;
+                font-size: 0.78rem;
+            }
+
+            .btn-status { flex: 1; }
+            .drop-point-controls { right: 8px; left: 8px; }
+            .drop-point-controls input { flex: 1; width: auto; }
+
+            .mission-main-title {
+                letter-spacing: 0.08em;
+                margin-top: 22px;
+            }
+
+            .mission-subtitle { line-height: 1.5; }
+
+            .dashboard-grid {
+                grid-template-columns: minmax(0, 1fr);
+                padding: 0 14px;
+                gap: 12px;
+            }
+
+            .dashboard-grid > .panel,
+            .dashboard-grid > .panel:first-child {
+                min-height: 420px;
+            }
+
+            .dashboard-grid > .panel:first-child { min-height: 520px; }
+            .scroll-content { padding: 22px 14px; }
+
+            .tele-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 8px;
+            }
+
+            .charts-grid {
+                grid-template-columns: minmax(0, 1fr);
+                gap: 10px;
+            }
+
+            .chart-box { height: 240px; }
+
+            .fixed-footer {
+                position: static;
+                min-height: 100px;
+                gap: 12px;
+                padding: 14px 8px;
+            }
+
+            .status-component {
+                min-width: 0;
+                flex: 1;
+            }
+
+            .comp-value { font-size: 1rem; }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="brand">NMIT-SAT M-III <span style="color:var(--text);font-weight:500;">/ GROUND STATION</span></div>
+    <div class="header-controls">
+        <div id="link-status" class="demo-badge">OFFLINE</div>
+        <input id="serial-port" class="serial-port" type="text" placeholder="COM port (e.g. COM4)" aria-label="Ground receiver COM port">
+        <div id="mission-timer">MISSION TIME: 00:00:00</div>
+        <button id="conn-btn" class="btn-status btn-connect">Connect</button>
+        <button id="demo-btn" class="btn-status btn-connect">Start Demo</button>
+    </div>
+</header>
+
+<div class="mission-main-title">MISSION CONTROL DASHBOARD</div>
+<div class="mission-subtitle">Enter the ground receiver COM port and connect · Demo is available separately</div>
+
+<div class="dashboard-grid">
+    <div class="panel">
+        <div class="panel-header">Structural Orientation</div>
+        <div id="cansat-3d-canvas"></div>
+        <div class="imu-grid">
+            <div class="imu-card"><div class="imu-label">Roll</div><div id="v-roll" class="imu-val">0.0°</div></div>
+            <div class="imu-card"><div class="imu-label">Pitch</div><div id="v-pitch" class="imu-val">0.0°</div></div>
+            <div class="imu-card"><div class="imu-label">Yaw</div><div id="v-yaw" class="imu-val">0.0°</div></div>
+        </div>
+        <div class="stat-grid">
+            <div class="stat-card"><div class="stat-label">Altitude</div><div id="v-alt" class="stat-value">0 m</div></div>
+            <div class="stat-card"><div class="stat-label">Voltage</div><div id="v-volt" class="stat-value">0.0V</div></div>
+            <div class="stat-card"><div class="stat-label">Sats</div><div id="v-sats" class="stat-value">0</div></div>
+            <div class="stat-card"><div class="stat-label">FSW State</div><div id="v-state-top" class="stat-value">---</div></div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-header">Recovery Track</div>
+        <div class="map-wrap">
+            <div id="map"></div>
+            <div id="map-status" class="map-status">WAITING FOR GPS FIX</div>
+            <div class="drop-point-controls">
+                <input id="drop-lat" type="number" step="any" placeholder="Drop latitude" aria-label="Drop point latitude">
+                <input id="drop-lon" type="number" step="any" placeholder="Drop longitude" aria-label="Drop point longitude">
+                <button id="set-drop-btn" type="button">SET DROP POINT</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-header">Telemetry Raw Packets</div>
+        <div class="terminal" id="terminal"></div>
+    </div>
+</div>
+
+<div class="scroll-content">
+    <h2 class="section-title">Telemetry Field View</h2>
+    <p class="section-note">Latest values from each received packet</p>
+    <div class="tele-grid" id="placeholder-grid"></div>
+
+    <h2 class="section-title">Real-Time Data Plots</h2>
+    <p class="section-note">Rolling view of the latest telemetry samples</p>
+    <div class="charts-grid">
+        <div class="chart-box"><canvas id="c-alt"></canvas></div>
+        <div class="chart-box"><canvas id="c-pres"></canvas></div>
+        <div class="chart-box"><canvas id="c-temp"></canvas></div>
+        <div class="chart-box"><canvas id="c-volt"></canvas></div>
+    </div>
+</div>
+
+<footer class="fixed-footer">
+    <div class="status-component">
+        <svg id="p-icon" class="comp-icon" viewBox="0 0 24 24"><path d="M12 2C7.03 2 3 6.03 3 11c0 2.22.81 4.25 2.14 5.82L12 22l6.86-5.18C20.19 15.25 21 13.22 21 11c0-4.97-4.03-9-9-9zm0 2c3.87 0 7 3.13 7 7 0 1.29-.35 2.5-1.02 3.56L12 19.11l-5.98-4.55A6.942 6.942 0 015 11c0-3.87 3.13-7 7-7z"/></svg>
+        <div class="comp-label">Parachute Status</div>
+        <div id="para-status-val" class="comp-value" style="font-size: 1.1rem; color: var(--cyan);">ASCENT</div>
+    </div>
+    <div class="status-component">
+        <div class="comp-label">Current FSW Flight State</div>
+        <div id="fsw-state-val" class="comp-value">BOOT</div>
+    </div>
+</footer>
+
+<script>
+    const FSW_STATES = ["BOOT", "TEST_MODE", "LAUNCH_PAD", "ASCENT", "ROCKET_DEPLOY", "DESCENT", "AEROBREAK_RELEASE", "IMPACT"];
+    const FIELD_NAMES = ["Team ID", "Time", "Count", "Altitude", "Pressure", "Temp", "Voltage", "Lat", "Lon", "GNSS Time", "GNSS Alt", "Sats", "Accel", "Gyro (R.P.Y)", "FSW State"];
+
+    let demoRunning = false, receiverConnected = false, startTime = 0, timerInt, telemetryInt, pCount = 0;
+    let charts = {};
+    const socket = io();
+
+    const grid = document.getElementById('placeholder-grid');
+    FIELD_NAMES.forEach((name, i) => {
+        grid.innerHTML += `<div class="stat-card"><div class="stat-label">${name}</div><div class="stat-value" id="f-${i}" style="font-size:0.85rem;">--</div></div>`;
+    });
+
+    let scene, camera, renderer, cansatGroup;
+    let targetRot = {x:0, y:0, z:0};
+    let currentRot = {x:0, y:0, z:0};
+
+    function init3D() {
+        const container = document.getElementById('cansat-3d-canvas');
+        scene = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(35, container.clientWidth / container.clientHeight, 0.1, 1000);
+        camera.position.set(22, 12, 22);
+        camera.lookAt(0, 3, 0);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        container.appendChild(renderer.domElement);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+        const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+        sun.position.set(10, 20, 10);
+        scene.add(sun);
+
+        cansatGroup = new THREE.Group();
+        const matOrange = new THREE.MeshStandardMaterial({ color: 0xf27420, metalness: 0.5 });
+        const matGrey = new THREE.MeshStandardMaterial({ color: 0x5a6a7a, metalness: 0.8 });
+
+        const base = new THREE.Mesh(new THREE.CylinderGeometry(4.5, 4.5, 0.8, 32), matGrey);
+        base.position.y = -8;
+        cansatGroup.add(base);
+
+        for (let i = 0; i < 4; i++) {
+            const leg = new THREE.Mesh(new THREE.BoxGeometry(1.2, 7, 1.2), matGrey);
+            const angle = (i * Math.PI) / 2;
+            leg.position.set(Math.cos(angle) * 4.2, -11, Math.sin(angle) * 4.2);
+            leg.rotation.z = (i % 2 === 0) ? 0.35 : -0.35;
+            if (i > 1) leg.rotation.x = 0.35;
+            cansatGroup.add(leg);
+        }
+
+        for (let i = 0; i < 5; i++) {
+            const disk = new THREE.Mesh(new THREE.CylinderGeometry(4.2, 4.2, 0.4, 32), matOrange);
+            disk.position.y = -5 + (i * 4.4);
+            cansatGroup.add(disk);
+        }
+
+        for (let i = 0; i < 10; i++) {
+            const rib = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 19, 8), matOrange);
+            const angle = (i * Math.PI * 2) / 10;
+            rib.position.set(Math.cos(angle) * 4.5, 4, Math.sin(angle) * 4.5);
+            cansatGroup.add(rib);
+        }
+
+        const topCap = new THREE.Mesh(
+            new THREE.CylinderGeometry(4.7, 4.7, 5, 32),
+            new THREE.MeshStandardMaterial({ color: 0xffffff })
+        );
+        topCap.position.y = 16.5;
+        cansatGroup.add(topCap);
+        scene.add(cansatGroup);
+
+        function anim() {
+            requestAnimationFrame(anim);
+            currentRot.x += (targetRot.x - currentRot.x) * 0.02;
+            currentRot.y += (targetRot.y - currentRot.y) * 0.02;
+            currentRot.z += (targetRot.z - currentRot.z) * 0.02;
+            cansatGroup.rotation.set(currentRot.x, currentRot.y, currentRot.z);
+            renderer.render(scene, camera);
+        }
+
+        anim();
+    }
+
+    function handleTelemetry(raw) {
+        const term = document.getElementById('terminal');
+        const line = document.createElement('div');
+        const time = document.createElement('span');
+        time.style.color = '#718096';
+        time.textContent = `[${new Date().toLocaleTimeString([], { hour12: false })}]`;
+        line.append(time, document.createTextNode(` ${raw}`));
+        term.appendChild(line);
+        while (term.childElementCount > 300) term.firstElementChild.remove();
+        term.scrollTop = term.scrollHeight;
+
+        const d = raw.split(',');
+        if (d.length < 15) {
+            setConnectionMessage('Packet has fewer than 15 comma-separated fields; check the receiver format.');
+            return;
+        }
+
+        d.forEach((val, i) => {
+            const field = document.getElementById(`f-${i}`);
+            if (field) field.innerText = val;
+        });
+
+        const gyro = d[13].split('|');
+        const r = parseFloat(gyro[0]) || 0;
+        const p = parseFloat(gyro[1]) || 0;
+        const y = parseFloat(gyro[2]) || 0;
+
+        document.getElementById('v-roll').innerText = r.toFixed(1) + "°";
+        document.getElementById('v-pitch').innerText = p.toFixed(1) + "°";
+        document.getElementById('v-yaw').innerText = y.toFixed(1) + "°";
+
+        const limit = 0.25;
+        targetRot.x = Math.max(Math.min(p * (Math.PI / 180) * 0.03, limit), -limit);
+        targetRot.y = Math.max(Math.min(y * (Math.PI / 180) * 0.03, limit), -limit);
+        targetRot.z = Math.max(Math.min(r * (Math.PI / 180) * 0.03, limit), -limit);
+
+        const stateIdx = Number.parseInt(d[14], 10);
+        const stateName = FSW_STATES[stateIdx] || `UNKNOWN (${d[14]})`;
+        document.getElementById('v-state-top').innerText = stateName;
+        document.getElementById('fsw-state-val').innerText = stateName;
+
+        const paraIcon = document.getElementById('p-icon');
+        const paraText = document.getElementById('para-status-val');
+
+        if (stateIdx <= 4) {
+            paraText.innerText = "ASCENT";
+            paraIcon.classList.remove('para-active');
+        } else if (stateIdx === 5) {
+            paraText.innerText = "DESCENT";
+            paraIcon.classList.add('para-active');
+        } else {
+            paraText.innerText = "RECOVERY";
+            paraIcon.classList.remove('para-active');
+        }
+
+        document.getElementById('v-alt').innerText = d[3] + " m";
+        document.getElementById('v-volt').innerText = d[6] + "V";
+        document.getElementById('v-sats').innerText = d[11];
+
+        updateChart(charts.alt, parseFloat(d[3]));
+        updateChart(charts.pres, parseFloat(d[4]));
+        updateChart(charts.temp, parseFloat(d[5]));
+        updateChart(charts.volt, parseFloat(d[6]));
+        updateRecoveryTrack(d[7], d[8]);
+    }
+
+    let map, marker, dropMarker, trackLine;
+    let trackPoints = [];
+
+    function initMap() {
+        map = L.map('map').setView([13.1295, 77.5877], 14);
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+            maxZoom: 19,
+            attribution: 'Tiles &copy; Esri'
+        }).addTo(map);
+
+        trackLine = L.polyline([], {
+            color: '#14b8ff',
+            weight: 4,
+            opacity: 0.9,
+            lineCap: 'round',
+            lineJoin: 'round'
+        }).addTo(map);
+
+        setTimeout(() => map.invalidateSize(), 0);
+    }
+
+    function updateRecoveryTrack(latitudeValue, longitudeValue) {
+        const latitude = Number(latitudeValue);
+        const longitude = Number(longitudeValue);
+        const hasValidCoordinates = Number.isFinite(latitude) &&
+            Number.isFinite(longitude) &&
+            latitude >= -90 && latitude <= 90 &&
+            longitude >= -180 && longitude <= 180 &&
+            (latitude !== 0 || longitude !== 0);
+        const status = document.getElementById('map-status');
+
+        if (!hasValidCoordinates) {
+            status.innerText = 'WAITING FOR VALID GPS FIX';
+            status.classList.remove('has-fix');
+            return;
+        }
+
+        const point = [latitude, longitude];
+
+        if (!marker) {
+            marker = L.circleMarker(point, {
+                radius: 8,
+                color: '#f5fbff',
+                weight: 3,
+                fillColor: '#14b8ff',
+                fillOpacity: 1
+            }).addTo(map);
+
+            trackPoints.push(point);
+            map.setView(point, 16);
+        } else {
+            marker.setLatLng(point);
+            const previousPoint = trackPoints[trackPoints.length - 1];
+
+            if (map.distance(previousPoint, point) >= 1) {
+                trackPoints.push(point);
+            }
+
+            map.panTo(point, { animate: true, duration: 0.4 });
+        }
+
+        trackLine.setLatLngs(trackPoints);
+        status.innerText = `GPS FIX · ${latitude.toFixed(5)}, ${longitude.toFixed(5)} · ${trackPoints.length} POINTS`;
+        status.classList.add('has-fix');
+    }
+
+    function setDropPoint(latitudeValue, longitudeValue) {
+        const latitude = Number(latitudeValue);
+        const longitude = Number(longitudeValue);
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude) ||
+            latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+            setConnectionMessage('Enter a valid drop-point latitude and longitude in decimal degrees.');
+            return;
+        }
+
+        const point = [latitude, longitude];
+        if (dropMarker) map.removeLayer(dropMarker);
+        dropMarker = L.marker(point, {
+            icon: L.divIcon({
+                className: 'drop-pin-icon',
+                html: '<div class="drop-pin"><span class="drop-pin-label">DROP POINT</span></div>',
+                iconSize: [24, 24],
+                iconAnchor: [12, 24]
+            }),
+            zIndexOffset: 1000,
+            title: 'Known drop point'
+        }).addTo(map);
+        dropMarker.bindPopup(
+            `<strong>Known drop point</strong><br>${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
+        );
+        map.setView(point, 16);
+        setConnectionMessage('Drop point set from the coordinates you entered.');
+    }
+
+    function initCharts() {
+        const create = (id, label, color) => new Chart(document.getElementById(id), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label,
+                    borderColor: color,
+                    data: [],
+                    borderWidth: 2,
+                    pointRadius: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { display: false },
+                    y: { grid: { color: '#333' } }
+                }
+            }
+        });
+
+        charts.alt = create('c-alt', 'Altitude', '#58a6ff');
+        charts.pres = create('c-pres', 'Pressure', '#f0883e');
+        charts.temp = create('c-temp', 'Temp', '#2ecc71');
+        charts.volt = create('c-volt', 'Volt', '#f85149');
+    }
+
+    function updateChart(chart, value) {
+        chart.data.labels.push("");
+        chart.data.datasets[0].data.push(value);
+
+        if (chart.data.labels.length > 30) {
+            chart.data.labels.shift();
+            chart.data.datasets[0].data.shift();
+        }
+
+        chart.update('none');
+    }
+
+    function setConnectionMessage(message) {
+        document.querySelector('.mission-subtitle').innerText = message;
+    }
+
+    function setLinkStatus(label, online) {
+        const badge = document.getElementById('link-status');
+        badge.innerText = label;
+        badge.classList.toggle('online', online);
+    }
+
+    function startMissionClock() {
+        if (timerInt) clearInterval(timerInt);
+        startTime = Date.now();
+        timerInt = setInterval(() => {
+            const diff = Date.now() - startTime;
+            const h = Math.floor(diff / 3600000).toString().padStart(2, '0');
+            const m = Math.floor((diff % 3600000) / 60000).toString().padStart(2, '0');
+            const s = Math.floor((diff % 60000) / 1000).toString().padStart(2, '0');
+            document.getElementById('mission-timer').innerText = `MISSION TIME: ${h}:${m}:${s}`;
+        }, 1000);
+    }
+
+    function stopDemo() {
+        demoRunning = false;
+        clearInterval(telemetryInt);
+        document.getElementById('demo-btn').innerText = 'Start Demo';
+    }
+
+    function startDemo() {
+        if (demoRunning) {
+            stopDemo();
+            setLinkStatus(receiverConnected ? 'RECEIVER ONLINE' : 'OFFLINE', receiverConnected);
+            setConnectionMessage('Demo stopped.');
+            return;
+        }
+
+        if (receiverConnected) {
+            setConnectionMessage('Disconnect the live receiver before starting the demo.');
+            return;
+        }
+        demoRunning = true;
+        document.getElementById('demo-btn').innerText = 'Stop Demo';
+        setLinkStatus('SIMULATION', false);
+        setConnectionMessage('Simulated telemetry only · Not connected to flight hardware.');
+        startMissionClock();
+
+        telemetryInt = setInterval(() => {
+            pCount++;
+            const rSim = Math.sin(pCount / 30) * 40;
+            const pSim = Math.cos(pCount / 35) * 30;
+            const stateSim = Math.floor(pCount / 20) % 8;
+            const latitude = (13.1295 + pCount * 0.00004).toFixed(6);
+            const longitude = (77.5877 + Math.sin(pCount / 5) * 0.00012).toFixed(6);
+            const mock = `NMIT_M3,${new Date().toLocaleTimeString()},${pCount},${(150 + Math.random() * 1).toFixed(1)},1012.2,26.8,3.84,${latitude},${longitude},12:00:15,163.0,12,XYZ,${rSim.toFixed(1)}|${pSim.toFixed(1)}|0.0,${stateSim},OPT`;
+            handleTelemetry(mock);
+        }, 2000);
+    }
+
+    document.getElementById('conn-btn').addEventListener('click', () => {
+        if (receiverConnected) {
+            socket.emit('disconnect_receiver');
+            return;
+        }
+        if (demoRunning) stopDemo();
+        const port = document.getElementById('serial-port').value.trim();
+        if (!port) {
+            setConnectionMessage('Enter the receiver COM port (find it in Windows Device Manager) before connecting.');
+            document.getElementById('serial-port').focus();
+            return;
+        }
+        if (!socket.connected) {
+            setConnectionMessage('Telemetry backend is not running. Start it with: python app.py');
+            return;
+        }
+        setConnectionMessage(`Connecting to ${port} at 115200 baud…`);
+        socket.emit('connect_receiver', { port, baud_rate: 115200 });
+    });
+
+    document.getElementById('demo-btn').addEventListener('click', startDemo);
+    document.getElementById('set-drop-btn').addEventListener('click', () => {
+        setDropPoint(
+            document.getElementById('drop-lat').value,
+            document.getElementById('drop-lon').value
+        );
+    });
+
+    socket.on('connect', () => {
+        setLinkStatus('BACKEND READY', false);
+        setConnectionMessage('Backend ready · Enter the ground receiver COM port and click Connect.');
+    });
+
+    socket.on('connect_error', () => {
+        setLinkStatus('BACKEND OFFLINE', false);
+        setConnectionMessage('Telemetry backend is not running. Install requirements and start it with: python app.py');
+    });
+
+    socket.on('receiver_status', (status) => {
+        if (status.state === 'connected') {
+            receiverConnected = true;
+            document.getElementById('conn-btn').innerText = 'Disconnect';
+            setLinkStatus(`RECEIVER ${status.port}`, true);
+            setConnectionMessage(`Receiving live telemetry from ${status.port} at ${status.baud_rate} baud.`);
+            startMissionClock();
+        } else {
+            receiverConnected = false;
+            document.getElementById('conn-btn').innerText = 'Connect';
+            setLinkStatus(demoRunning ? 'SIMULATION' : (status.state === 'error' ? 'CONNECTION ERROR' : 'OFFLINE'), false);
+            setConnectionMessage(demoRunning ? 'Simulated telemetry only · Not connected to flight hardware.' : status.message);
+            if (timerInt) clearInterval(timerInt);
+        }
+    });
+
+    socket.on('telemetry_packet', (packet) => handleTelemetry(packet.raw));
+    socket.on('packet_warning', (warning) => setConnectionMessage(warning.message));
+
+    window.onload = () => {
+        init3D();
+        initMap();
+        initCharts();
+    };
+</script>
+</body>
+</html>
